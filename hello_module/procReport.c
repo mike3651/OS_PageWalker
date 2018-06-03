@@ -3,10 +3,12 @@
 #include<linux/unistd.h>
 #include<linux/types.h>
 #include <asm/pgtable.h>
+#include <linux/sched.h>
+#include <linux/sched/signal.h>
 
 //static unsigned long PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 //void getPageData();
-unsigned long virt2phys(struct mm_struct mm, unsigned long vpage);
+unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage);
 int proc_init (void) {
   printk(KERN_INFO "helloModule: kernel module initialized\n");
   struct vm_area_struct *vma = 0;
@@ -50,7 +52,7 @@ void proc_cleanup(void) {
   printk(KERN_INFO "helloModule: performing cleanup of module\n");
 }
 
-unsigned long virt2phys(struct mm_struct mm, unsigned long vpage) {
+unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage) {
   pgd_t *pgd;
   p4d_t *p4d;
   pud_t *pud;
@@ -78,7 +80,6 @@ unsigned long virt2phys(struct mm_struct mm, unsigned long vpage) {
   pte_unmap(pte);
   return physical_page_addr;
 }
-
 
 
   MODULE_LICENSE("GPL");
