@@ -1,57 +1,92 @@
-#include<linux/module.h>
-#include<linux/slab.h>
-#include<linux/unistd.h>
-#include<linux/types.h>
+
 #include <asm/pgtable.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
+#include <linux/slab.h>
+#include <linux/types.h>
+#include <linux/unistd.h>
+#include <stdio.h>
 
-//static unsigned long PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
-//void getPageData();
+struct Procdata {
+  char *pid;
+  char *name;
+  int contig;
+  int noncontig;
+} procdata;
+
+/*********************
+Signature Declarations
+**********************/
 unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage);
+
+
+/********************************************
+Performed on kernel module insertion (insmod)
+*********************************************/
 int proc_init (void) {
-  printk(KERN_INFO "helloModule: kernel module initialized\n");
-  struct vm_area_struct *vma = 0;
-  struct task_struct *task;
   unsigned long vpage;
-  if (task->mm && task->mm->mmap)
+  struct vm_area_struct *vma = 0;
+  struct task_struct *task = current;
+  int pid_n = 0;
+
+
+  printk(KERN_INFO "procReport: kernel module test initialized\n");
 
   // running through each task
-  for (vma = task->mm->mmap; vma; vma = vma->vm_next){
+  for_each_process(task) {
+    if (task->mm && task->mm->mmap && task != NULL) {
+      for (vma = task->mm->mmap; vma; vma = vma->vm_next){
 
-    int contiguous = 0;
-    int non_contiguous = 0;
-    unsigned long prev_page_addr;
-    int pageCounter = 0;
+        int contiguous = 0;
+        int non_contiguous = 0;
+        unsigned long prev_page_addr;
+        int pageCounter = 0;
 
-    // Grab each page data from the given process
-    for (vpage = vma->vm_start; vpage < vma->vm_end; vpage += PAGE_SIZE){
+        // print the task name and pid to logs
+        if (pid_n != task->pid) {
+          printk(KERN_INFO "procReport: current process: %s, PID: %d", task->comm, task->pid);
+          pid_n = task->pid;
+        }
 
-      // gets the physical page address
-      unsigned long physical_page_addr = virt2phys(task->mm, vpage);
+        // Grab each page data from the given process
+        for (vpage = vma->vm_start; vpage < vma->vm_end; vpage += PAGE_SIZE){
 
-      // only start comparing once we have a page to compare to
-      if(pageCounter != 0) {
+          unsigned long physical_page_addr = virt2phys(task->mm, vpage);
 
-        // verify that the pages are contiguous or non contiguous
-        unsigned long page_diff = physical_page_addr - prev_page_addr;
-        if(page_diff == PAGE_SIZE) {
-          contiguous++;
-        } else {
-          non_contiguous++;
+          // only start comparing once we have a page to compare to
+          if(pageCounter != 0) {
+
+            // verify that the pages are contiguous or non contiguous
+            unsigned long page_diff = physical_page_addr - prev_page_addr;
+            if(page_diff == PAGE_SIZE) {
+              contiguous++;
+            } else {
+              non_contiguous++;
+            }
+          }
+          prev_page_addr = physical_page_addr;
+          pageCounter++;
         }
       }
-      prev_page_addr = physical_page_addr;
-      pageCounter++;
     }
   }
   return 0;
 }
 
+
+/*****************************************
+Performed on kernel module removal (rmmod)
+******************************************/
 void proc_cleanup(void) {
-  printk(KERN_INFO "helloModule: performing cleanup of module\n");
+  printk(KERN_INFO "procReport: performing cleanup of module\n");
 }
 
+
+/*************************************************************
+Returns a physical address given a memory map and virtual page
+**************************************************************/
 unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage) {
   pgd_t *pgd;
   p4d_t *p4d;
@@ -82,6 +117,44 @@ unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage) {
 }
 
 
-  MODULE_LICENSE("GPL");
-  module_init(proc_init);
-  module_exit(proc_cleanup);
+/*
+Writes a comma separated row of process id, process name, 
+contiguous memory pages, non-contiguous memory pages, 
+and total pages, given a pointer to an open FILE and 
+a procdata struct. Returns 0 if successful.
+*/
+int write_procdata(FILE *fp, struct Procdata *procdata) {
+  if (fp == NULL) {
+    return 1;
+  }
+
+  fprintf(fp, "%d,%s,%d,%d,%d\n",
+    procdata->pid, procdata->name, 
+    procdata->contig, procdata->noncontig,
+    procdata->contig + procdata->noncontig);
+
+  return 0;
+}
+
+int write_header(FILE *fp) {
+  if (fp == NULL) {
+    return 1;
+  }
+  fprintf(fp, "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+  return 0;
+}
+
+int write_footer(FILE *fp, struct Procdata *procdata) {
+  if (fp == NULL) {
+    return 1;
+  }
+  fprintf(fp, "TOTALS,,%d,%d,%d", 
+    procdata->contig, procdata->noncontig,
+    procdata->contig + procdata->noncontig);
+  return 0;
+}
+
+
+MODULE_LICENSE("GPL");
+module_init(proc_init);
+module_exit(proc_cleanup);
