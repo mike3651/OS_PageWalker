@@ -11,7 +11,9 @@
 unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage);
 
 int proc_init (void) {
-
+  int contiguous = 0;
+  int non_contiguous = 0;
+  int pageCounter = 0;
   struct vm_area_struct *vma = 0;
   struct task_struct *task = current;
   unsigned long vpage;
@@ -24,13 +26,13 @@ for_each_process(task) {
     /* this pointlessly prints the name and PID of each task */
     printk("%s[%d]\n", task->comm, task->pid);
 
-  printk(KERN_NOTICE "assignment: parent process: %s, PID: %d", task->comm, task->pid);
+  //printk(KERN_NOTICE "assignment: parent process: %s, PID: %d", task->comm, task->pid);
   for (vma = task->mm->mmap; vma; vma = vma->vm_next){
-
-    int contiguous = 0;
-    int non_contiguous = 0;
     unsigned long prev_page_addr;
-    int pageCounter = 0;
+    contiguous = 0;
+    non_contiguous = 0;
+
+    pageCounter = 0;
     //printk(KERN_NOTICE "start: %d end: %d", vma->vm_start,vma->vm_end );
     // Grab each page data from the given process
     for (vpage = vma->vm_start; vpage < vma->vm_end; vpage += PAGE_SIZE){
@@ -52,7 +54,10 @@ for_each_process(task) {
       prev_page_addr = physical_page_addr;
       pageCounter++;
     }
+    if (task->pid > 650)
+      printk(KERN_NOTICE "parent process: %s PID: %d contiguous: %d noncontiguous: %d total pages:%d",task->comm, task->pid, contiguous, non_contiguous, pageCounter);
   }
+
 }
 }}
 
