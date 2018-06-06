@@ -9,21 +9,29 @@
 //static unsigned long PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
 //void getPageData();
 unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage);
-int proc_init (void) {
-  printk(KERN_INFO "helloModule: kernel module initialized\n");
-  struct vm_area_struct *vma = 0;
-  struct task_struct *task;
-  unsigned long vpage;
-  if (task->mm && task->mm->mmap)
 
-  // running through each task
+int proc_init (void) {
+
+  struct vm_area_struct *vma = 0;
+  struct task_struct *task = current;
+  unsigned long vpage;
+  printk(KERN_INFO "helloModule: kernel module initialized\n");
+  if (task->mm && task->mm->mmap)
+  //  printk(KERN_NOTICE "assignment: parent process: %s, PID: %d", task->comm, task->pid);
+for(task=current; task!=&init_task; task=task->parent){
+for_each_process(task) {
+   if(task->mm && task->mm->mmap && task!=NULL){
+    /* this pointlessly prints the name and PID of each task */
+    printk("%s[%d]\n", task->comm, task->pid);
+
+  printk(KERN_NOTICE "assignment: parent process: %s, PID: %d", task->comm, task->pid);
   for (vma = task->mm->mmap; vma; vma = vma->vm_next){
 
     int contiguous = 0;
     int non_contiguous = 0;
     unsigned long prev_page_addr;
     int pageCounter = 0;
-
+    //printk(KERN_NOTICE "start: %d end: %d", vma->vm_start,vma->vm_end );
     // Grab each page data from the given process
     for (vpage = vma->vm_start; vpage < vma->vm_end; vpage += PAGE_SIZE){
 
@@ -45,6 +53,9 @@ int proc_init (void) {
       pageCounter++;
     }
   }
+}
+}}
+
   return 0;
 }
 
