@@ -117,12 +117,12 @@ unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage) {
 }
 
 
-/*
+/********************************************************
 Writes a comma separated row of process id, process name, 
 contiguous memory pages, non-contiguous memory pages, 
 and total pages, given a pointer to an open FILE and 
 a procdata struct. Returns 0 if successful.
-*/
+*********************************************************/
 int write_procdata(FILE *fp, struct Procdata *procdata) {
   if (fp == NULL) {
     return 1;
@@ -136,6 +136,10 @@ int write_procdata(FILE *fp, struct Procdata *procdata) {
   return 0;
 }
 
+
+/********************
+Writes the csv header
+*********************/
 int write_header(FILE *fp) {
   if (fp == NULL) {
     return 1;
@@ -144,6 +148,10 @@ int write_header(FILE *fp) {
   return 0;
 }
 
+
+/********************
+Writes the csv footer
+*********************/
 int write_footer(FILE *fp, struct Procdata *procdata) {
   if (fp == NULL) {
     return 1;
