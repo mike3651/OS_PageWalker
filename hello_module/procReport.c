@@ -1,3 +1,15 @@
+/*
+HW 3
+
+This code writes to log files accessable by dmesg in the correct format all pid and their info
+above 650. 
+It is able to create the procfile correctly, but is only able to "print" the header to it. We
+weren't able to figure out how to make a big csv list and show it in the procfile, because
+it isn't written to like a normal userspace file.
+We have left in the commented out non-working code to show where we were headed with our thought process.
+
+Alyssa Ingersoll, Samantha Shoecraft, and Mike Wilson
+*/
 
 #include <linux/sched.h>
 #include <linux/module.h>
@@ -15,6 +27,7 @@
 
 #define BUFSIZE 100
 
+// A struct to hold each process's data to print later.
 struct Procdata {
   int pid;
   char *name;
@@ -22,6 +35,7 @@ struct Procdata {
   int noncontig;
 } Procdata;
 
+// A global string to write our CSV to, to be shown in the procfile
 static char *str = NULL;
 
 /*********************
@@ -31,9 +45,10 @@ unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage);
 int write_procdata(struct Procdata *procdata);
 int write_header(void);
 int write_footer(struct Procdata *procdata);
-// int proc_show(struct seq_fil *m, void *v);
-// int void open_callback(struct inode *inode, struct file *file);
-// ssize_t write_callback(struct FILE *file, const char __user *buffer, size_t count, loff_t *f_pos);
+
+/************
+Proc File Ops
+*************/
 static int proc_show(struct seq_file *m, void *v) {
   seq_printf(m, "%s\n", str);
   return 0;
@@ -44,7 +59,7 @@ static int open_callback(struct inode *inode, struct file *file) {
 }
 
 static ssize_t write_callback(struct file *file, const char __user *ubuf, size_t count, loff_t *ppos) {
-  int num, c, i, m;
+  int num, c;
   char buf[BUFSIZE];
   if (*ppos > 0 || count > BUFSIZE) {
     return -EFAULT;
@@ -52,19 +67,9 @@ static ssize_t write_callback(struct file *file, const char __user *ubuf, size_t
   if (copy_from_user(buf, ubuf, count)) {
     return -EFAULT;
   }
-  num = sscanf(buf, "testng");
+  num = sscanf(buf, "test");
   c = strlen(buf);
   *ppos = c;
-  // char *tmp = kzalloc((count+1), GFP_KERNEL);
-  // if (!tmp) {
-  //   return -ENOMEM;
-  // }
-  // if (copy_from_user(tmp, buffer, count)) {
-  //   kfree(tmp);
-  //   return EFAULT;
-  // }
-  // kfree(str);
-  // str = tmp;
   return c;
 }
 
@@ -97,7 +102,6 @@ static const struct file_operations proc_file_fops = {
 static struct proc_dir_entry *procentry;
 
 
-
 /********************************************
 Performed on kernel module insertion (insmod)
 *********************************************/
@@ -106,26 +110,31 @@ int proc_init (void) {
   struct vm_area_struct *vma = 0;
   struct task_struct *task = current;
   struct Procdata proc_totals = { .contig = 0, .noncontig = 0 };
-  struct Procdata procdata = {};
+  // struct Procdata procdata = {};
   int pid_n = 0;
   procentry = proc_create("proc_report",0644,NULL, &proc_file_fops);
 
   printk(KERN_INFO "proc_report: kernel module test initialized\n");
   write_header();
 
+  int contig_sum = 0;
+  int noncontig_sum = 0;
+
   // running through each task
   for_each_process(task) {
-    if (task->mm && task->mm->mmap && task != NULL) {
-      for (vma = task->mm->mmap; vma; vma = vma->vm_next){
-
+    if (task->mm && task->mm->mmap && task != NULL && task->pid > 650) {
         int contiguous = 0;
         int non_contiguous = 0;
+
+      for (vma = task->mm->mmap; vma; vma = vma->vm_next){
+
+
         unsigned long prev_page_addr;
         int pageCounter = 0;
 
         // print the task name and pid to logs
         if (pid_n != task->pid) {
-          printk(KERN_INFO "proc_report: current process: %s, PID: %d", task->comm, task->pid);
+          // printk(KERN_INFO "%d,%s,", task->pid, task->comm);
           pid_n = task->pid;
         }
 
@@ -147,18 +156,20 @@ int proc_init (void) {
           }
           prev_page_addr = physical_page_addr;
           pageCounter++;
-          // sprintf(buf, "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
         }
-        procdata.name = task->comm;
-        procdata.pid = task->pid;
-        procdata.contig = contiguous;
-        procdata.noncontig = non_contiguous;
-        write_procdata(&procdata);
-
+        // procdata.name = task->comm;
+        // procdata.pid = task->pid;
+        // procdata.contig = contiguous;
+        // procdata.noncontig = non_contiguous;
+        // write_procdata(&procdata);
       }
+      printk(KERN_INFO "%d,%s,%d,%d,%d\n", task->pid, task->comm, contiguous, non_contiguous, contiguous+non_contiguous);
+      contig_sum += contiguous;
+      noncontig_sum += non_contiguous;
     }
   }
-  write_footer(&proc_totals);
+  // For some reason, this line only prints once the module is unloaded
+  printk(KERN_INFO "TOTALS,,%d,%d,%d", contig_sum, noncontig_sum, contig_sum + noncontig_sum);
   return 0;
 }
 
@@ -213,9 +224,9 @@ a procdata struct. Returns 0 if successful.
 *********************************************************/
 int write_procdata(struct Procdata *procdata) {
   char *new_str;
-  char *proc_str;
+  char proc_str[63];
 
-  proc_str = sscanf("%d,%s,%d,%d,%d\n",
+  sprintf(proc_str, "%d,%s,%d,%d,%d\n",
     procdata->pid, procdata->name, 
     procdata->contig, procdata->noncontig,
     procdata->contig + procdata->noncontig);
@@ -223,6 +234,7 @@ int write_procdata(struct Procdata *procdata) {
   if ((new_str = kzalloc(strlen(str) + strlen(proc_str) + 1, GFP_KERNEL)) != NULL) {
     strcat(new_str, str);
     strcat(new_str, proc_str);
+    str = new_str;
   } 
 
   printk(proc_str);
@@ -235,7 +247,7 @@ int write_procdata(struct Procdata *procdata) {
 Writes the csv header
 *********************/
 int write_header(void) {
-  str = ("PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+  str = ("PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n0,placeholder,0,0,0\n");
   return 0;
 }
 
@@ -244,13 +256,11 @@ int write_header(void) {
 Writes the csv footer
 *********************/
 int write_footer(struct Procdata *procdata) {
-  // seq_printf("TOTALS,,%d,%d,%d", 
+  // printk("TOTALS,,%d,%d,%d", 
   //   procdata->contig, procdata->noncontig,
   //   procdata->contig + procdata->noncontig);
   return 0;
 }
-
-
 
 
 MODULE_LICENSE("GPL");
