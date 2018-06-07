@@ -790,6 +790,14 @@ deps_/home/alyssa/Projects/hw3/OS_PageWalker/hello_module/procReport.o := \
     $(wildcard include/config/fanotify.h) \
     $(wildcard include/config/posix/mqueue.h) \
     $(wildcard include/config/bpf/syscall.h) \
+  include/linux/uaccess.h \
+  include/linux/kasan-checks.h \
+  arch/x86/include/asm/uaccess.h \
+    $(wildcard include/config/x86/intel/usercopy.h) \
+  arch/x86/include/asm/smap.h \
+    $(wildcard include/config/x86/smap.h) \
+  arch/x86/include/asm/extable.h \
+  arch/x86/include/asm/uaccess_64.h \
   arch/x86/include/asm/pgtable.h \
     $(wildcard include/config/debug/wx.h) \
     $(wildcard include/config/have/arch/transparent/hugepage/pud.h) \
@@ -798,6 +806,7 @@ deps_/home/alyssa/Projects/hw3/OS_PageWalker/hello_module/procReport.o := \
   include/asm-generic/pgtable.h \
     $(wildcard include/config/have/arch/huge/vmap.h) \
     $(wildcard include/config/x86/espfix64.h) \
+  include/linux/seq_file.h \
   include/linux/slab.h \
     $(wildcard include/config/debug/slab.h) \
     $(wildcard include/config/failslab.h) \

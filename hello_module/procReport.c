@@ -1,13 +1,19 @@
 
 #include <linux/sched.h>
 #include <linux/module.h>
+#include <linux/init.h>
 #include <linux/proc_fs.h>
 #include <linux/sched/signal.h>
+#include <linux/uaccess.h>
+#include <linux/fs.h>
 #include <asm/pgtable.h>
 #include <linux/kernel.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/unistd.h>
+
+#define BUFSIZE 100
 
 struct Procdata {
   int pid;
@@ -16,13 +22,7 @@ struct Procdata {
   int noncontig;
 } Procdata;
 
-static const struct file_operations proc_file_fops = {
-  .owner = THIS_MODULE,
-  // .open = open_callback,
-  // .read = read_callback,
-};
-
-static struct proc_dir_entry *procentry;
+static char *str = NULL;
 
 /*********************
 Signature Declarations
@@ -31,9 +31,72 @@ unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage);
 int write_procdata(struct Procdata *procdata);
 int write_header(void);
 int write_footer(struct Procdata *procdata);
+// int proc_show(struct seq_fil *m, void *v);
+// int void open_callback(struct inode *inode, struct file *file);
+// ssize_t write_callback(struct FILE *file, const char __user *buffer, size_t count, loff_t *f_pos);
+static int proc_show(struct seq_file *m, void *v) {
+  seq_printf(m, "%s\n", str);
+  return 0;
+}
 
-// void open_callback(void) {}
-// void read_callback(void) {}
+static int open_callback(struct inode *inode, struct file *file) {
+  return single_open(file, proc_show, NULL);
+}
+
+static ssize_t write_callback(struct file *file, const char __user *ubuf, size_t count, loff_t *ppos) {
+  int num, c, i, m;
+  char buf[BUFSIZE];
+  if (*ppos > 0 || count > BUFSIZE) {
+    return -EFAULT;
+  }
+  if (copy_from_user(buf, ubuf, count)) {
+    return -EFAULT;
+  }
+  num = sscanf(buf, "testng");
+  c = strlen(buf);
+  *ppos = c;
+  // char *tmp = kzalloc((count+1), GFP_KERNEL);
+  // if (!tmp) {
+  //   return -ENOMEM;
+  // }
+  // if (copy_from_user(tmp, buffer, count)) {
+  //   kfree(tmp);
+  //   return EFAULT;
+  // }
+  // kfree(str);
+  // str = tmp;
+  return c;
+}
+
+static ssize_t read_callback(struct file *file, char __user *ubuf, size_t count, loff_t *ppos) {
+  char buf[BUFSIZE];
+  int len = 0;
+  if (*ppos > 0 || count < BUFSIZE) {
+    return 0;
+  }
+
+  len += sprintf(buf, "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+
+  if (copy_to_user(ubuf, buf, len)) {
+    return -EFAULT;
+  }
+  *ppos = len;
+  return len;
+}
+
+static const struct file_operations proc_file_fops = {
+  .owner = THIS_MODULE,
+  .open = open_callback,
+  // .read = seq_read,
+  .read = read_callback,
+  .llseek = seq_lseek,
+  .release = single_release,
+  .write = write_callback,
+};
+
+static struct proc_dir_entry *procentry;
+
+
 
 /********************************************
 Performed on kernel module insertion (insmod)
@@ -83,6 +146,8 @@ int proc_init (void) {
           }
           prev_page_addr = physical_page_addr;
           pageCounter++;
+          // sprintf(buf, "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+
         }
       }
     }
@@ -155,7 +220,7 @@ int write_procdata(struct Procdata *procdata) {
 Writes the csv header
 *********************/
 int write_header(void) {
-  printk("PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+  // seq_printf("PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
   return 0;
 }
 
@@ -164,9 +229,9 @@ int write_header(void) {
 Writes the csv footer
 *********************/
 int write_footer(struct Procdata *procdata) {
-  printk("TOTALS,,%d,%d,%d", 
-    procdata->contig, procdata->noncontig,
-    procdata->contig + procdata->noncontig);
+  // seq_printf("TOTALS,,%d,%d,%d", 
+  //   procdata->contig, procdata->noncontig,
+  //   procdata->contig + procdata->noncontig);
   return 0;
 }
 
