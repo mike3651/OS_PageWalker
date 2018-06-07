@@ -1,9 +1,10 @@
+
+#include <linux/sched.h>
+#include <linux/module.h>
+#include <linux/proc_fs.h>
+#include <linux/sched/signal.h>
 #include <asm/pgtable.h>
 #include <linux/kernel.h>
-#include <linux/module.h>
-// #include <linux/proc_fs.h>
-#include <linux/sched.h>
-#include <linux/sched/signal.h>
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/unistd.h>
@@ -86,7 +87,7 @@ int proc_init (void) {
       }
     }
   }
-  // write_footer(&proc_totals);
+  write_footer(&proc_totals);
   return 0;
 }
 
@@ -141,7 +142,7 @@ a procdata struct. Returns 0 if successful.
 *********************************************************/
 int write_procdata(struct Procdata *procdata) {
 
-  printk(KERN_INFO "%d,%s,%d,%d,%d\n",
+  printk("%d,%s,%d,%d,%d\n",
     procdata->pid, procdata->name, 
     procdata->contig, procdata->noncontig,
     procdata->contig + procdata->noncontig);
@@ -154,7 +155,7 @@ int write_procdata(struct Procdata *procdata) {
 Writes the csv header
 *********************/
 int write_header(void) {
-  printk(KERN_INFO "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+  printk("PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
   return 0;
 }
 
@@ -163,7 +164,7 @@ int write_header(void) {
 Writes the csv footer
 *********************/
 int write_footer(struct Procdata *procdata) {
-  printk(KERN_INFO "TOTALS,,%d,%d,%d", 
+  printk("TOTALS,,%d,%d,%d", 
     procdata->contig, procdata->noncontig,
     procdata->contig + procdata->noncontig);
   return 0;
