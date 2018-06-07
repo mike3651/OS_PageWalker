@@ -1,26 +1,38 @@
-
 #include <asm/pgtable.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/proc_fs.h>
 #include <linux/sched.h>
 #include <linux/sched/signal.h>
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/unistd.h>
-#include <stdio.h>
 
 struct Procdata {
-  char *pid;
+  int pid;
   char *name;
   int contig;
   int noncontig;
-} procdata;
+} Procdata;
+
+static const struct file_operations proc_file_fops = {
+  .owner = THIS_MODULE,
+  // .open = open_callback,
+  // .read = read_callback,
+};
+
+static struct proc_dir_entry *procentry;
 
 /*********************
 Signature Declarations
 **********************/
 unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage);
+int write_procdata(struct Procdata *procdata);
+int write_header(void);
+int write_footer(struct Procdata *procdata);
 
+// void open_callback(void) {}
+// void read_callback(void) {}
 
 /********************************************
 Performed on kernel module insertion (insmod)
@@ -29,10 +41,12 @@ int proc_init (void) {
   unsigned long vpage;
   struct vm_area_struct *vma = 0;
   struct task_struct *task = current;
+  struct Procdata proc_totals = { .contig = 0, .noncontig = 0 };
   int pid_n = 0;
+  procentry = proc_create("proc_report",0644,NULL, &proc_file_fops);
 
-
-  printk(KERN_INFO "procReport: kernel module test initialized\n");
+  printk(KERN_INFO "proc_report: kernel module test initialized\n");
+  write_header();
 
   // running through each task
   for_each_process(task) {
@@ -46,7 +60,7 @@ int proc_init (void) {
 
         // print the task name and pid to logs
         if (pid_n != task->pid) {
-          printk(KERN_INFO "procReport: current process: %s, PID: %d", task->comm, task->pid);
+          printk(KERN_INFO "proc_report: current process: %s, PID: %d", task->comm, task->pid);
           pid_n = task->pid;
         }
 
@@ -72,6 +86,7 @@ int proc_init (void) {
       }
     }
   }
+  // write_footer(&proc_totals);
   return 0;
 }
 
@@ -80,7 +95,8 @@ int proc_init (void) {
 Performed on kernel module removal (rmmod)
 ******************************************/
 void proc_cleanup(void) {
-  printk(KERN_INFO "procReport: performing cleanup of module\n");
+  printk(KERN_INFO "proc_report: performing cleanup of module\n");
+  proc_remove(procentry);
 }
 
 
@@ -123,12 +139,9 @@ contiguous memory pages, non-contiguous memory pages,
 and total pages, given a pointer to an open FILE and 
 a procdata struct. Returns 0 if successful.
 *********************************************************/
-int write_procdata(FILE *fp, struct Procdata *procdata) {
-  if (fp == NULL) {
-    return 1;
-  }
+int write_procdata(struct Procdata *procdata) {
 
-  fprintf(fp, "%d,%s,%d,%d,%d\n",
+  printk(KERN_INFO "%d,%s,%d,%d,%d\n",
     procdata->pid, procdata->name, 
     procdata->contig, procdata->noncontig,
     procdata->contig + procdata->noncontig);
@@ -140,11 +153,8 @@ int write_procdata(FILE *fp, struct Procdata *procdata) {
 /********************
 Writes the csv header
 *********************/
-int write_header(FILE *fp) {
-  if (fp == NULL) {
-    return 1;
-  }
-  fprintf(fp, "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+int write_header(void) {
+  printk(KERN_INFO "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
   return 0;
 }
 
@@ -152,17 +162,17 @@ int write_header(FILE *fp) {
 /********************
 Writes the csv footer
 *********************/
-int write_footer(FILE *fp, struct Procdata *procdata) {
-  if (fp == NULL) {
-    return 1;
-  }
-  fprintf(fp, "TOTALS,,%d,%d,%d", 
+int write_footer(struct Procdata *procdata) {
+  printk(KERN_INFO "TOTALS,,%d,%d,%d", 
     procdata->contig, procdata->noncontig,
     procdata->contig + procdata->noncontig);
   return 0;
 }
 
 
+
+
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Samantha Shoecraft, Alyssa Ingersoll, Michael Wilson");
 module_init(proc_init);
 module_exit(proc_cleanup);
