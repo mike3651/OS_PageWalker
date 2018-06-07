@@ -1,23 +1,117 @@
-#include<linux/module.h>
-#include<linux/slab.h>
-#include<linux/unistd.h>
-#include<linux/types.h>
-#include <asm/pgtable.h>
 #include <linux/sched.h>
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/proc_fs.h>
 #include <linux/sched/signal.h>
+#include <linux/uaccess.h>
+#include <linux/fs.h>
+#include <asm/pgtable.h>
+#include <linux/kernel.h>
+#include <linux/seq_file.h>
+#include <linux/slab.h>
+#include <linux/types.h>
+#include <linux/unistd.h>
 
-//static unsigned long PAGE_SIZE = sysconf(_SC_PAGE_SIZE);
-//void getPageData();
+#define BUFSIZE 100
+
+struct Procdata {
+  int pid;
+  char *name;
+  int contig;
+  int noncontig;
+} Procdata;
+
+static char *str = NULL;
+
+/*********************
+Signature Declarations
+**********************/
 unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage);
+int write_procdata(struct Procdata *procdata);
+int write_header(void);
+int write_footer(struct Procdata *procdata);
+// int proc_show(struct seq_fil *m, void *v);
+// int void open_callback(struct inode *inode, struct file *file);
+// ssize_t write_callback(struct FILE *file, const char __user *buffer, size_t count, loff_t *f_pos);
+static int proc_show(struct seq_file *m, void *v) {
+  seq_printf(m, "%s\n", str);
+  return 0;
+}
 
+static int open_callback(struct inode *inode, struct file *file) {
+  return single_open(file, proc_show, NULL);
+}
+
+static ssize_t write_callback(struct file *file, const char __user *ubuf, size_t count, loff_t *ppos) {
+  int num, c, i, m;
+  char buf[BUFSIZE];
+  if (*ppos > 0 || count > BUFSIZE) {
+    return -EFAULT;
+  }
+  if (copy_from_user(buf, ubuf, count)) {
+    return -EFAULT;
+  }
+  num = sscanf(buf, "testng");
+  c = strlen(buf);
+  *ppos = c;
+  // char *tmp = kzalloc((count+1), GFP_KERNEL);
+  // if (!tmp) {
+  //   return -ENOMEM;
+  // }
+  // if (copy_from_user(tmp, buffer, count)) {
+  //   kfree(tmp);
+  //   return EFAULT;
+  // }
+  // kfree(str);
+  // str = tmp;
+  return c;
+}
+
+static ssize_t read_callback(struct file *file, char __user *ubuf, size_t count, loff_t *ppos) {
+  char buf[BUFSIZE];
+  int len = 0;
+  if (*ppos > 0 || count < BUFSIZE) {
+    return 0;
+  }
+
+  len += sprintf(buf, str);
+
+  if (copy_to_user(ubuf, buf, len)) {
+    return -EFAULT;
+  }
+  *ppos = len;
+  return len;
+}
+
+static const struct file_operations proc_file_fops = {
+  .owner = THIS_MODULE,
+  .open = open_callback,
+  // .read = seq_read,
+  .read = read_callback,
+  .llseek = seq_lseek,
+  .release = single_release,
+  .write = write_callback,
+};
+
+static struct proc_dir_entry *procentry;
+
+
+
+/********************************************
+Performed on kernel module insertion (insmod)
+*********************************************/
 int proc_init (void) {
   unsigned long vpage;
   struct vm_area_struct *vma = 0;
   struct task_struct *task = current;
+  struct Procdata proc_totals = { .contig = 0, .noncontig = 0 };
+  struct Procdata procdata = {};
   int pid_n = 0;
 
+  procentry = proc_create("proc_report",0644,NULL, &proc_file_fops);
 
-  printk(KERN_INFO "procReport: kernel module test initialized\n");
+  printk(KERN_INFO "proc_report: kernel module test initialized\n");
+  write_header();
 
   // running through each task
   for_each_process(task) {
@@ -31,7 +125,7 @@ int proc_init (void) {
 
         // print the task name and pid to logs
         if (pid_n != task->pid) {
-          printk(KERN_INFO "procReport: current process: %s, PID: %d", task->comm, task->pid);
+          printk(KERN_INFO "proc_report: current process: %s, PID: %d", task->comm, task->pid);
           pid_n = task->pid;
         }
 
@@ -53,18 +147,34 @@ int proc_init (void) {
           }
           prev_page_addr = physical_page_addr;
           pageCounter++;
+          // sprintf(buf, "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
         }
+        procdata.name = task->comm;
+        procdata.pid = task->pid;
+        procdata.contig = contiguous;
+        procdata.noncontig = non_contiguous;
+        write_procdata(&procdata);
+
       }
     }
   }
+  write_footer(&proc_totals);
   return 0;
 }
 
 
+/*****************************************
+Performed on kernel module removal (rmmod)
+******************************************/
 void proc_cleanup(void) {
-  printk(KERN_INFO "helloModule: performing cleanup of module\n");
+  printk(KERN_INFO "proc_report: performing cleanup of module\n");
+  proc_remove(procentry);
 }
 
+
+/*************************************************************
+Returns a physical address given a memory map and virtual page
+**************************************************************/
 unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage) {
   pgd_t *pgd;
   p4d_t *p4d;
@@ -95,6 +205,55 @@ unsigned long virt2phys(struct mm_struct *mm, unsigned long vpage) {
 }
 
 
-  MODULE_LICENSE("GPL");
-  module_init(proc_init);
-  module_exit(proc_cleanup);
+/********************************************************
+Writes a comma separated row of process id, process name,
+contiguous memory pages, non-contiguous memory pages,
+and total pages, given a pointer to an open FILE and
+a procdata struct. Returns 0 if successful.
+*********************************************************/
+int write_procdata(struct Procdata *procdata) {
+  char *new_str;
+  char *proc_str;
+
+  printk(KERN_INFO"%d,%s,%d,%d,%d\n",
+    procdata->pid, procdata->name,
+    procdata->contig, procdata->noncontig,
+    procdata->contig + procdata->noncontig);
+
+  /*if ((new_str = kzalloc(strlen(str) + strlen(proc_str) + 1, GFP_KERNEL)) != NULL) {
+    strcat(new_str, str);
+    strcat(new_str, proc_str);
+  }
+
+  printk(proc_str);
+*/
+  return 0;
+}
+
+
+/********************
+Writes the csv header
+*********************/
+int write_header(void) {
+  str = ("PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+  return 0;
+}
+
+
+/********************
+Writes the csv footer
+*********************/
+int write_footer(struct Procdata *procdata) {
+  // seq_printf("TOTALS,,%d,%d,%d",
+  //   procdata->contig, procdata->noncontig,
+  //   procdata->contig + procdata->noncontig);
+  return 0;
+}
+
+
+
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Samantha Shoecraft, Alyssa Ingersoll, Michael Wilson");
+module_init(proc_init);
+module_exit(proc_cleanup);
