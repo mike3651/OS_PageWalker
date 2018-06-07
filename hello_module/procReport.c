@@ -75,7 +75,7 @@ static ssize_t read_callback(struct file *file, char __user *ubuf, size_t count,
     return 0;
   }
 
-  len += sprintf(buf, "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+  len += sprintf(buf, str);
 
   if (copy_to_user(ubuf, buf, len)) {
     return -EFAULT;
@@ -106,6 +106,7 @@ int proc_init (void) {
   struct vm_area_struct *vma = 0;
   struct task_struct *task = current;
   struct Procdata proc_totals = { .contig = 0, .noncontig = 0 };
+  struct Procdata procdata = {};
   int pid_n = 0;
   procentry = proc_create("proc_report",0644,NULL, &proc_file_fops);
 
@@ -147,8 +148,13 @@ int proc_init (void) {
           prev_page_addr = physical_page_addr;
           pageCounter++;
           // sprintf(buf, "PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
-
         }
+        procdata.name = task->comm;
+        procdata.pid = task->pid;
+        procdata.contig = contiguous;
+        procdata.noncontig = non_contiguous;
+        write_procdata(&procdata);
+
       }
     }
   }
@@ -206,11 +212,20 @@ and total pages, given a pointer to an open FILE and
 a procdata struct. Returns 0 if successful.
 *********************************************************/
 int write_procdata(struct Procdata *procdata) {
+  char *new_str;
+  char *proc_str;
 
-  printk("%d,%s,%d,%d,%d\n",
+  proc_str = sscanf("%d,%s,%d,%d,%d\n",
     procdata->pid, procdata->name, 
     procdata->contig, procdata->noncontig,
     procdata->contig + procdata->noncontig);
+
+  if ((new_str = kzalloc(strlen(str) + strlen(proc_str) + 1, GFP_KERNEL)) != NULL) {
+    strcat(new_str, str);
+    strcat(new_str, proc_str);
+  } 
+
+  printk(proc_str);
 
   return 0;
 }
@@ -220,7 +235,7 @@ int write_procdata(struct Procdata *procdata) {
 Writes the csv header
 *********************/
 int write_header(void) {
-  // seq_printf("PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
+  str = ("PROCESS REPORT:\nproc_id,proc_name,contig_pages,noncontig_pages,total_pages\n");
   return 0;
 }
 
